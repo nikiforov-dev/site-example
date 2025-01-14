@@ -142,6 +142,9 @@
                     alert('Произошла ошибка при удалении пользователей.');
                 });
         }
+
+        // Запускаем автообновление списка пользователей каждые 2 секунды
+        setInterval(fetchUsers, 2000);
     </script>
 </head>
 <body>
@@ -152,7 +155,6 @@
 
 <div>
     <h2>Второй блок</h2>
-    <button onclick="fetchUsers()">Показать пользователей</button>
     <button onclick="deleteUsers()">Удалить пользователей</button>
     <div id="userList"></div>
 </div>
