@@ -1,133 +1,76 @@
 package main
 
 import (
-	"encoding/json"
+	"backend-example/pkg/handler"
+	"backend-example/pkg/model"
+	"backend-example/pkg/websocket"
 	"fmt"
-	"io/ioutil"
-	"net/http"
-	"os"
-	"strings"
+	"github.com/gin-gonic/gin"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"log"
+	"time"
 )
 
-type User struct {
-	Name  string `json:"name"`
-	Email string `json:"email"`
-}
+var db *gorm.DB
+var loc *time.Location
 
-func saveUserToFile(user User) error {
-	file, err := os.OpenFile("users.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+func initDB() error {
+	var err error
+	db, err = gorm.Open(sqlite.Open("logs.db"), &gorm.Config{})
 	if err != nil {
+		return fmt.Errorf("failed to get db connection")
+	}
+	if err := db.AutoMigrate(&model.LogEntry{}, &model.Message{}, &model.User{}); err != nil {
 		return err
 	}
-	defer file.Close()
 
-	_, err = file.WriteString(fmt.Sprintf("Name: %s, Email: %s\n", user.Name, user.Email))
-	return err
+	return nil
 }
 
-func handleFormSubmission(w http.ResponseWriter, r *http.Request) {
-	// Add CORS headers
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	// Handle preflight (OPTIONS) requests
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	if r.Method != http.MethodPost {
-		http.Error(w, "Only POST requests are allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var user User
-	err := json.NewDecoder(r.Body).Decode(&user)
+func init() {
+	var err error
+	loc, err = time.LoadLocation("Asia/Vladivostok")
 	if err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
+		panic("Не удалось загрузить часовой пояс")
 	}
-
-	err = saveUserToFile(user)
-	if err != nil {
-		http.Error(w, "Failed to save user", http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintln(w, "User saved successfully!")
-}
-
-func users(w http.ResponseWriter, r *http.Request) {
-	// Add CORS headers
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET,DELETE")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "DELETE" {
-		deleteUsers(w, r)
-		return
-	}
-
-	// Read users from file
-	data, err := ioutil.ReadFile("users.txt")
-	if err != nil {
-		http.Error(w, "Failed to read users file", http.StatusInternalServerError)
-		return
-	}
-
-	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-	var users []User
-
-	for _, line := range lines {
-		parts := strings.SplitN(line, ", ", 2)
-		if len(parts) == 2 {
-			name := strings.TrimPrefix(parts[0], "Name: ")
-			email := strings.TrimPrefix(parts[1], "Email: ")
-			users = append(users, User{Name: name, Email: email})
-		}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(users)
-}
-
-func deleteUsers(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	if r.Method != http.MethodDelete {
-		http.Error(w, "Only DELETE requests are allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Truncate the file
-	err := os.Truncate("users.txt", 0)
-	if err != nil {
-		http.Error(w, "Failed to delete users", http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintln(w, "All users deleted.")
-}
-
-func serveHTML(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	http.ServeFile(w, r, "index.html")
 }
 
 func main() {
-	http.HandleFunc("/submit", handleFormSubmission)
-	http.HandleFunc("/users", users)
-	http.HandleFunc("/", serveHTML)
+	if err := initDB(); err != nil {
+		log.Fatalf("failed to init db: %v", err)
+	}
 
-	fmt.Println("Server is running on http://localhost:1111")
-	err := http.ListenAndServe(":1111", nil)
-	if err != nil {
-		fmt.Println("Error starting server:", err)
+	ws := websocket.New(db)
+	go ws.HandleMessages()
+
+	h := handler.New(db, ws, loc)
+
+	r := gin.Default()
+
+	r.StaticFile("/login", "login.html")
+	r.StaticFile("/register", "register.html")
+	r.POST("/user", h.CreateUser)
+	r.POST("/login", h.Login)
+
+	protected := r.Group("")
+	protected.Use(handler.AuthMiddleware())
+
+	protected.StaticFile("/", "frontend.html")
+	protected.GET("/user", h.GetUser)
+	protected.GET("/user/:id", h.GetUserByID)
+	protected.POST("/logs", h.CreateLog)
+	protected.PUT("/logs/:id/finish", h.FinishLog)
+	protected.GET("/logs", h.GetLogs)
+	protected.GET("/logs/:id", h.GetLogByID)
+	protected.PUT("/logs/:id", h.UpdateLog)
+	protected.DELETE("/logs/:id", h.DeleteLog)
+	protected.GET("/logs/stats", h.GetTotalDuration)
+	protected.GET("/chat/messages", h.GetChatMessages)
+
+	protected.GET("/ws", h.WSHandler)
+
+	if err := r.Run(":8080"); err != nil {
+		log.Fatalf("Server is stopped: %v", err)
 	}
 }
