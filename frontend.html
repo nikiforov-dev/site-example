@@ -621,11 +621,30 @@
         function addChatMessage(msg) {
             let chatMessages = document.getElementById("chatMessages");
             let messageDiv = document.createElement("div");
+
+            // Регулярное выражение для поиска URL изображений
+            let imageRegex = /(https?:\/\/.*\.(?:png|jpg|jpeg|gif))/i;
+            let content = "";
+
+            // Если в объекте сообщения присутствует поле user, выводим имя пользователя
             if (msg.user) {
-                messageDiv.innerHTML = "<strong>" + msg.user + ":</strong> " + msg.text;
-            } else {
-                messageDiv.innerHTML = msg.text;
+                content += "<strong>" + msg.user + ":</strong> ";
             }
+
+            // Проверяем, является ли весь текст URL на изображение
+            let trimmedText = msg.text.trim();
+            let match = trimmedText.match(imageRegex);
+            if (match && trimmedText === match[0]) {
+                content += "<br/><img src='" + trimmedText + "' alt='image' style='max-width: 100%;'/>";
+            } else if (imageRegex.test(msg.text)) {
+                // Если текст содержит URL изображения среди прочего текста – выводим и текст, и картинку
+                let url = msg.text.match(imageRegex)[0];
+                content += msg.text + "<br/><img src='" + url + "' alt='image' style='max-width: 100%;'/>";
+            } else {
+                content += msg.text;
+            }
+
+            messageDiv.innerHTML = content;
             chatMessages.appendChild(messageDiv);
             scrollChatToBottom();
         }
