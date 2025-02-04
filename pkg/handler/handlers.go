@@ -254,5 +254,7 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
+	c.SetCookie("jwtToken", token, 86400, "/", "", false, true)
+
 	c.JSON(http.StatusOK, gin.H{"token": token})
 }
