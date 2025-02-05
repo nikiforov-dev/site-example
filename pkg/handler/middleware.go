@@ -2,6 +2,7 @@ package handler
 
 import (
 	"backend-example/pkg/service/auth"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -51,6 +52,8 @@ func AuthMiddleware() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+
+		fmt.Println("----------- User is:", login)
 
 		// Сохраняем login.html в контексте запроса для использования в обработчиках
 		c.Set("login", login)
