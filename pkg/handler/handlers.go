@@ -36,7 +36,7 @@ func (h *Handler) CreateLog(c *gin.Context) {
 	}
 
 	var user model.User
-	h.db.First(&user).Where("login = ?", login)
+	h.db.Where("login = ?", login).First(&user)
 
 	var entry model.LogEntry
 	if err := c.ShouldBindJSON(&entry); err != nil {
@@ -90,7 +90,7 @@ func (h *Handler) UpdateLog(c *gin.Context) {
 	}
 
 	var user model.User
-	h.db.First(&user).Where("login = ?", login)
+	h.db.Where("login = ?", login).First(&user)
 
 	var entry model.LogEntry
 	if err := h.db.First(&entry, id).Error; err != nil {
@@ -139,7 +139,7 @@ func (h *Handler) WSHandler(c *gin.Context) {
 	}
 
 	var user model.User
-	h.db.First(&user).Where("login = ?", login)
+	h.db.Where("login = ?", login).First(&user)
 
 	ws, err := h.ws.Upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
@@ -147,6 +147,7 @@ func (h *Handler) WSHandler(c *gin.Context) {
 	}
 	defer ws.Close()
 	h.ws.Clients[ws] = true
+
 	for {
 		var msg model.Message
 		err := ws.ReadJSON(&msg)
@@ -200,7 +201,7 @@ func (h *Handler) GetUser(c *gin.Context) {
 	}
 
 	var user model.User
-	h.db.First(&user).Where("login = ?", login)
+	h.db.Where("login = ?", login).First(&user)
 	c.JSON(http.StatusCreated, userResponse{
 		ID:    user.ID,
 		Name:  user.Name,
@@ -218,7 +219,7 @@ func (h *Handler) GetUserByID(c *gin.Context) {
 	id := c.Param("id")
 
 	var user model.User
-	h.db.First(&user).Where("id = ?", id)
+	h.db.Where("id = ?", id).First(&user)
 	c.JSON(http.StatusCreated, userResponse{
 		ID:    user.ID,
 		Name:  user.Name,
